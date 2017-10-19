@@ -14,20 +14,35 @@
 
 -module(template).
 
--export([replace/2]).
+-export([replace/2, match/2]).
 
--spec replace(list(), map())
-	-> list() | {error, any()}.
-replace(String, Dictionary) ->
+%% api
+
+-spec replace(list(), map()) -> list() | {error, any()}.
+replace(Template, Dictionary) ->
     try
-        replace(String, [], Dictionary)
+        replace(Template, [], Dictionary)
     catch
         error:{badkey, K} ->
             {error, {bad_key, K}};
+
         error:{badmatch, {error, eof}} ->
             {error, eof}
     end.
 
+-spec match(list(), list()) -> map() | {error, any()}.
+match(Template, String) ->
+    try
+        match(Template, String, #{})
+    catch
+        error:{badmatch,{error,eof}} ->
+            {error, eof};
+
+        throw:Reason ->
+            {error, Reason}
+    end.
+
+%%% internal functions
 
 
 replace([], Result, _Dict) ->
@@ -42,6 +57,49 @@ replace([C | Rest], Result, Dict) ->
     replace(Rest, [C | Result], Dict).
 
 
+
+
+match([], [], D) ->
+    D;
+
+match([C | TemplateRest], [C | StringRest], D) ->
+    match(TemplateRest, StringRest, D);
+
+match([$$, $( | Rest], String, D) ->
+    {ok, Key, Remain} = read_key(Rest),
+    case maps:get(Key, D, undefined) of
+        undefined ->
+            bind(Key, [], Remain, String, D);
+
+        CurrentValue ->
+            match(lists:flatten([CurrentValue | Remain]), String, D)
+    end;
+
+match(_, _, _) ->
+    {error, no_match}.
+
+
+
+
+bind(Key, Value, [], [], D) ->
+    D#{Key => lists:reverse(Value)};
+
+bind(Key, Value, Remain, [], D) when length(Remain) > 0 ->
+    NewD = D#{Key => lists:reverse(Value)},
+    match(Remain, [], NewD);
+
+bind(Key, AccValue, Remain, Remain, D) ->
+    D#{Key => lists:reverse(AccValue)};
+
+bind(Key, AccValue, Remain, [C | StringRest] = String, D) ->
+    NewD = D#{Key => lists:reverse(AccValue)},
+    case match(Remain, String, NewD) of
+        {error, _Reason} ->
+            bind(Key, [C | AccValue], Remain, StringRest, D);
+
+        YetAnotherD ->
+            YetAnotherD
+    end.
 
 
 read_key(String) ->
@@ -59,6 +117,7 @@ read_key([C | Remain], Res) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
+%% replace tests
 noreplace_test() ->
     ?assertEqual("Hello", template:replace("Hello", #{})).
 
@@ -84,4 +143,62 @@ not_found_test() ->
 non_terminated_key_test() ->
     ?assertEqual({error, eof},
                  template:replace("$(A", #{})).
+
+
+%% match tests
+
+match_no_variables_test() ->
+    D = match("abc", "abc"),
+    ?assertEqual([], maps:keys(D)).
+
+match_empty_strings_test() ->
+    D = match("", ""),
+    ?assertEqual([], maps:keys(D)).
+
+match_no_match_no_variables_test() ->
+    ?assertEqual({error, no_match}, match("abc", "123")).
+
+match_no_match_no_variables2_test() ->
+    ?assertEqual({error, no_match}, match("abc", "")).
+
+match_only_one_variable_test() ->
+    D = match("$(A)", "abc"),
+    ?assertEqual(["A"], maps:keys(D)),
+    ?assertEqual("abc", maps:get("A", D)).
+
+match_one_variable_at_beginning_with_remainder_test() ->
+    D = match("$(A)abc", "abc"),
+    ?assertEqual(["A"], maps:keys(D)),
+    ?assertEqual("", maps:get("A", D)).
+
+match_one_variable_at_end_test() ->
+    D = match("abc$(A)", "abc"),
+    ?assertEqual(["A"], maps:keys(D)),
+    ?assertEqual("", maps:get("A", D)).
+
+match_one_variable_in_middle_test() ->
+    D = match("abc$(A)def", "abc123def"),
+    ?assertEqual(["A"], maps:keys(D)),
+    ?assertEqual("123", maps:get("A", D)).
+
+match_two_variables_test() ->
+    D = match("abc$(A)#$(B)def", "abc123#321def"),
+    ?assertEqual(["A", "B"], maps:keys(D)),
+    ?assertEqual("123", maps:get("A", D)),
+    ?assertEqual("321", maps:get("B", D)).
+
+match_two_times_test() ->
+    D = match("a$(A)$(A)a", "abba"),
+    ?assertEqual(["A"], maps:keys(D)),
+    ?assertEqual("b", maps:get("A", D)).
+
+match_bad_variable_test() ->
+    ?assertEqual({error, eof}, match("$(A", def)).
+
+match_no_match_test() ->
+    ?assertEqual({error, no_match}, match("$(A)a", "b")).
+
+match_no_match2_test() ->
+    ?assertEqual({error, no_match}, match("a$(A)a$(A)", "abac")).
+
 -endif.
