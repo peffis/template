@@ -36,10 +36,7 @@ match(Template, String) ->
         match(Template, String, #{})
     catch
         error:{badmatch,{error,eof}} ->
-            {error, eof};
-
-        throw:Reason ->
-            {error, Reason}
+            {error, eof}
     end.
 
 %%% internal functions

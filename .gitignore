@@ -2,3 +2,5 @@
 ebin
 .erlang.mk
 template.d
+cover
+eunit.coverdata
