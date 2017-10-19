@@ -1,4 +1,4 @@
-%% Copyright (c) 2011-2017, Stefan Hellqvist <stefan@hellkvist.org>
+%% Copyright (c) 2011-2017, Stefan Hellkvist <stefan@hellkvist.org>
 %%
 %% Permission to use, copy, modify, and/or distribute this software for any
 %% purpose with or without fee is hereby granted, provided that the above
@@ -11,6 +11,14 @@
 %% WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 %% ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 %% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+%%
+%% @author Stefan Hellkvist <stefan@hellkvist.org> [http://hellkvist.org/blog/]
+%% @copyright 2011-2017 Stefan Hellkvist
+%% @doc Simple replace/match functions for templates. The module gives you either a
+%% function to replace placeholders inside a template string given a dictionary or
+%% a function for matching out variable values given a template string and a string.
+%% Variables are always on the form $(VARRIABLE_NAME)
+
 
 -module(template).
 
@@ -18,6 +26,10 @@
 
 %% api
 
+%% @doc replaces variables inside the template string with the values defined by the dictionary
+%% @param Template A template string, possibly containing variables on the form $(VARIABLE_NAME)
+%% @param Dictionary A map with keys matching the variable names in the template string and with values being strings
+%% @returns A list where all variables have been substituted or an error tuple if an error was found
 -spec replace(list(), map()) -> list() | {error, any()}.
 replace(Template, Dictionary) ->
     try
@@ -30,6 +42,12 @@ replace(Template, Dictionary) ->
             {error, eof}
     end.
 
+
+%% @doc given a template string and a string to match the template against, this extracts a map of variables which
+%% satisfies the match
+%% @param Template A template string, possibly containing variables on the form $(VARIABLE_NAME)
+%% @param String A string that the template will be matched against
+%% @returns A map where all variables in the template are keys with values that satisfies the map or an error tuple if an error was found
 -spec match(list(), list()) -> map() | {error, any()}.
 match(Template, String) ->
     try
@@ -38,6 +56,9 @@ match(Template, String) ->
         error:{badmatch,{error,eof}} ->
             {error, eof}
     end.
+
+
+
 
 %%% internal functions
 
@@ -65,16 +86,15 @@ match([C | TemplateRest], [C | StringRest], D) ->
 match([$$, $( | Rest], String, D) ->
     {ok, Key, Remain} = read_key(Rest),
     case maps:get(Key, D, undefined) of
-        undefined ->
+        undefined -> %% if we don't have an existing binding we try all possible bindings
             bind(Key, [], Remain, String, D);
 
-        CurrentValue ->
+        CurrentValue -> %% if we have an existing binding we substitute the value of the variable and try to match
             match(lists:flatten([CurrentValue | Remain]), String, D)
     end;
 
 match(_, _, _) ->
     {error, no_match}.
-
 
 
 
@@ -99,6 +119,8 @@ bind(Key, AccValue, Remain, [C | StringRest] = String, D) ->
     end.
 
 
+
+%% reads out the variable name from a string where the string starts after the "$(" part of the variable
 read_key(String) ->
     read_key(String, []).
 
@@ -108,6 +130,7 @@ read_key([$) | Remain], Res) ->
     {ok, lists:reverse(Res), Remain};
 read_key([C | Remain], Res) ->
     read_key(Remain, [C | Res]).
+
 
 
 %%% EUNIT tests %%%%
