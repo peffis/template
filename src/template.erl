@@ -51,7 +51,7 @@ replace(Template, Dictionary) ->
 -spec match(list(), list()) -> map() | {error, any()}.
 match(Template, String) ->
     try
-        match(Template, String, #{})
+        match(Template, String, #{}, {Template, String})
     catch
         error:{badmatch,{error,eof}} ->
             {error, eof}
@@ -77,42 +77,42 @@ replace([C | Rest], Result, Dict) ->
 
 
 
-match([], [], D) ->
+match([], [], D, _) ->
     D;
 
-match([C | TemplateRest], [C | StringRest], D) ->
-    match(TemplateRest, StringRest, D);
+match([C | TemplateRest], [C | StringRest], D, Arg) ->
+    match(TemplateRest, StringRest, D, Arg);
 
-match([$$, $( | Rest], String, D) ->
+match([$$, $( | Rest], String, D, Arg) ->
     {ok, Key, Remain} = read_key(Rest),
     case maps:get(Key, D, undefined) of
         undefined -> %% if we don't have an existing binding we try all possible bindings
-            bind(Key, [], Remain, String, D);
+            bind(Key, [], Remain, String, D, Arg);
 
         CurrentValue -> %% if we have an existing binding we substitute the value of the variable and try to match
-            match(lists:flatten([CurrentValue | Remain]), String, D)
+            match(lists:flatten([CurrentValue | Remain]), String, D, Arg)
     end;
 
-match(_, _, _) ->
-    {error, no_match}.
+match(_, _, _, Arg) ->
+    {error, {no_match, Arg}}.
 
 
 
-bind(Key, Value, [], [], D) ->
+bind(Key, Value, [], [], D, _) ->
     D#{Key => lists:reverse(Value)};
 
-bind(Key, Value, Remain, [], D) when length(Remain) > 0 ->
+bind(Key, Value, Remain, [], D, Arg) when length(Remain) > 0 ->
     NewD = D#{Key => lists:reverse(Value)},
-    match(Remain, [], NewD);
+    match(Remain, [], NewD, Arg);
 
-bind(Key, AccValue, Remain, Remain, D) ->
+bind(Key, AccValue, Remain, Remain, D, _) ->
     D#{Key => lists:reverse(AccValue)};
 
-bind(Key, AccValue, Remain, [C | StringRest] = String, D) ->
+bind(Key, AccValue, Remain, [C | StringRest] = String, D, Arg) ->
     NewD = D#{Key => lists:reverse(AccValue)},
-    case match(Remain, String, NewD) of
+    case match(Remain, String, NewD, Arg) of
         {error, _Reason} ->
-            bind(Key, [C | AccValue], Remain, StringRest, D);
+            bind(Key, [C | AccValue], Remain, StringRest, D, Arg);
 
         YetAnotherD ->
             YetAnotherD
@@ -176,10 +176,10 @@ match_empty_strings_test() ->
     ?assertEqual([], maps:keys(D)).
 
 match_no_match_no_variables_test() ->
-    ?assertEqual({error, no_match}, match("abc", "123")).
+    ?assertEqual({error, {no_match, {"abc", "123"}}}, match("abc", "123")).
 
 match_no_match_no_variables2_test() ->
-    ?assertEqual({error, no_match}, match("abc", "")).
+    ?assertEqual({error, {no_match, {"abc", ""}}}, match("abc", "")).
 
 match_only_one_variable_test() ->
     D = match("$(A)", "abc"),
@@ -216,9 +216,9 @@ match_bad_variable_test() ->
     ?assertEqual({error, eof}, match("$(A", def)).
 
 match_no_match_test() ->
-    ?assertEqual({error, no_match}, match("$(A)a", "b")).
+    ?assertEqual({error, {no_match, {"$(A)a", "b"}}}, match("$(A)a", "b")).
 
 match_no_match2_test() ->
-    ?assertEqual({error, no_match}, match("a$(A)a$(A)", "abac")).
+    ?assertEqual({error, {no_match, {"a$(A)a$(A)", "abac"}}}, match("a$(A)a$(A)", "abac")).
 
 -endif.
