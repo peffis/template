@@ -101,6 +101,9 @@ match(_, _, _, Arg) ->
 bind(Key, Value, [], [], D, _) ->
     D#{Key => lists:reverse(Value)};
 
+bind(Key, _, [], Something, D, _) when length(Something) > 0 ->
+    D#{Key => Something};
+
 bind(Key, Value, Remain, [], D, Arg) when length(Remain) > 0 ->
     NewD = D#{Key => lists:reverse(Value)},
     match(Remain, [], NewD, Arg);
@@ -221,4 +224,7 @@ match_no_match_test() ->
 match_no_match2_test() ->
     ?assertEqual({error, {no_match, {"a$(A)a$(A)", "abac"}}}, match("a$(A)a$(A)", "abac")).
 
+match_full_string_to_one_variable_test() ->
+    D = match("$(_BODY)", "some string"),
+    ?assertEqual("some string", maps:get("_BODY", D)).
 -endif.
