@@ -231,4 +231,10 @@ match_full_string_to_one_variable_test() ->
 match_conflict_test() ->
     D = match("$(A)$(A)", "ab"),
     ?assertEqual({error, {no_match, {"$(A)$(A)", "ab"}}}, D).
+
+match_three_test() ->
+    D = match("$(A)$(A)$(A)", "ababab"),
+    ?assertEqual(["A"], maps:keys(D)),
+    ?assertEqual("ab", maps:get("A", D)).
+
 -endif.
