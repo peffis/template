@@ -227,4 +227,8 @@ match_no_match2_test() ->
 match_full_string_to_one_variable_test() ->
     D = match("$(_BODY)", "some string"),
     ?assertEqual("some string", maps:get("_BODY", D)).
+
+match_conflict_test() ->
+    D = match("$(A)$(A)", "ab"),
+    ?assertEqual({error, {no_match, {"$(A)$(A)", "ab"}}}, D).
 -endif.
