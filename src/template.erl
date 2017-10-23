@@ -237,4 +237,8 @@ match_three_test() ->
     ?assertEqual(["A"], maps:keys(D)),
     ?assertEqual("ab", maps:get("A", D)).
 
+%%match_two_test() ->  %% this example shows that a match can have many results
+%%    D = match("a$(A)b$(B)", "abaa"),
+%%    ?assertEqual(["A", "B"], maps:keys(D)),
+%%    ?assertEqual(["b", "a"], [maps:get("A", D), maps:get("B", D)]).
 -endif.
