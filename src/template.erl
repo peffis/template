@@ -83,7 +83,7 @@ match([], [], D, _) ->
 match([C | TemplateRest], [C | StringRest], D, Arg) ->
     match(TemplateRest, StringRest, D, Arg);
 
-match([$$, $( | Rest], String, D, Arg) ->
+match("$(" ++ Rest, String, D, Arg) ->
     {ok, Key, Remain} = read_key(Rest),
     case maps:get(Key, D, undefined) of
         undefined -> %% if we don't have an existing binding we try all possible bindings
