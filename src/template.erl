@@ -80,9 +80,6 @@ replace([C | Rest], Result, Dict) ->
 match([], [], D, _) ->
     D;
 
-match([C | TemplateRest], [C | StringRest], D, Arg) ->
-    match(TemplateRest, StringRest, D, Arg);
-
 match("$(" ++ Rest, String, D, Arg) ->
     {ok, Key, Remain} = read_key(Rest),
     case maps:get(Key, D, undefined) of
@@ -92,6 +89,9 @@ match("$(" ++ Rest, String, D, Arg) ->
         CurrentValue -> %% if we have an existing binding we substitute the value of the variable and try to match
             match(lists:flatten([CurrentValue | Remain]), String, D, Arg)
     end;
+
+match([C | TemplateRest], [C | StringRest], D, Arg) ->
+    match(TemplateRest, StringRest, D, Arg);
 
 match(_, _, _, Arg) ->
     {error, {no_match, Arg}}.
@@ -237,8 +237,9 @@ match_three_test() ->
     ?assertEqual(["A"], maps:keys(D)),
     ?assertEqual("ab", maps:get("A", D)).
 
-%%match_two_test() ->  %% this example shows that a match can have many results
-%%    D = match("a$(A)b$(B)", "abaa"),
-%%    ?assertEqual(["A", "B"], maps:keys(D)),
-%%    ?assertEqual(["b", "a"], [maps:get("A", D), maps:get("B", D)]).
+match_with_variable_pattern_test() ->
+    D = match("$(A)", "$(A)"),
+    ?assertEqual(["A"], maps:keys(D)),
+    ?assertEqual("$(A)", maps:get("A", D)).
+
 -endif.
