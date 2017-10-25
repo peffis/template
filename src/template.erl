@@ -66,7 +66,7 @@ match(Template, String) ->
 replace([], Result, _Dict) ->
     lists:reverse(lists:flatten(Result));
 
-replace([$$, $( | Rest], Result, Dict) ->
+replace("$(" ++ Rest, Result, Dict) ->
     {ok, Key, Remain} = read_key(Rest),
     Value = maps:get(Key, Dict),
     replace(Remain, [lists:reverse(Value) | Result], Dict);
