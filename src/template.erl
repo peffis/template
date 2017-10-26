@@ -12,12 +12,12 @@
 %% ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 %% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 %%
-%% @author Stefan Hellkvist <stefan@hellkvist.org> [http://hellkvist.org/blog/]
+%% @author Stefan Hellkvist <stefan@hellkvist.org> [https://blog.hellkvist.org/]
 %% @copyright 2011-2017 Stefan Hellkvist
 %% @doc Simple replace/match functions for templates. The module gives you either a
 %% function to replace placeholders inside a template string given a dictionary or
 %% a function for matching out variable values given a template string and a string.
-%% Variables are always on the form $(VARRIABLE_NAME)
+%% Variables are always on the form $(VARIABLE_NAME)
 
 
 -module(template).
