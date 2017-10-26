@@ -67,12 +67,12 @@ replace([], Result, _Dict) ->
     lists:reverse(lists:flatten(Result));
 
 replace("$(" ++ Rest, Result, Dict) ->
-    {ok, Key, Remain} = read_key(Rest),
-    Value = maps:get(Key, Dict),
-    replace(Remain, [lists:reverse(Value) | Result], Dict);
+    {ok, VarName, RemainsAfterVariable} = read_var_name(Rest),
+    Value = maps:get(VarName, Dict),
+    replace(RemainsAfterVariable, [lists:reverse(Value) | Result], Dict);
 
-replace([C | Rest], Result, Dict) ->
-    replace(Rest, [C | Result], Dict).
+replace([C | RestTemplate], Result, Dict) ->
+    replace(RestTemplate, [C | Result], Dict).
 
 
 
@@ -81,13 +81,13 @@ match([], [], D, _) ->
     D;
 
 match("$(" ++ Rest, String, D, Arg) ->
-    {ok, Key, Remain} = read_key(Rest),
-    case maps:get(Key, D, undefined) of
+    {ok, VarName, RemainsAfterVariable} = read_var_name(Rest),
+    case maps:get(VarName, D, undefined) of
         undefined -> %% if we don't have an existing binding we try all possible bindings
-            bind(Key, [], Remain, String, D, Arg);
+            bind(VarName, [], RemainsAfterVariable, String, D, Arg);
 
         CurrentValue -> %% if we have an existing binding we substitute the value of the variable and try to match
-            match(lists:flatten([CurrentValue | Remain]), String, D, Arg)
+            match(lists:flatten([CurrentValue | RemainsAfterVariable]), String, D, Arg)
     end;
 
 match([C | TemplateRest], [C | StringRest], D, Arg) ->
@@ -98,24 +98,24 @@ match(_, _, _, Arg) ->
 
 
 
-bind(Key, Value, [], [], D, _) ->
-    D#{Key => lists:reverse(Value)};
+bind(VarName, Value, [], [], D, _) ->
+    D#{VarName => lists:reverse(Value)};
 
-bind(Key, _, [], Something, D, _) when length(Something) > 0 ->
-    D#{Key => Something};
+bind(VarName, _, [], String, D, _) when length(String) > 0 ->
+    D#{VarName => String};
 
-bind(Key, Value, Remain, [], D, Arg) when length(Remain) > 0 ->
-    NewD = D#{Key => lists:reverse(Value)},
-    match(Remain, [], NewD, Arg);
+bind(VarName, Value, Template, [], D, Arg) when length(Template) > 0 ->
+    NewD = D#{VarName => lists:reverse(Value)},
+    match(Template, [], NewD, Arg);
 
-bind(Key, AccValue, Remain, Remain, D, _) ->
-    D#{Key => lists:reverse(AccValue)};
+bind(VarName, AccValue, String, String, D, _) ->
+    D#{VarName => lists:reverse(AccValue)};
 
-bind(Key, AccValue, Remain, [C | StringRest] = String, D, Arg) ->
-    NewD = D#{Key => lists:reverse(AccValue)},
-    case match(Remain, String, NewD, Arg) of
+bind(VarName, AccValue, Template, [C | StringRest] = String, D, Arg) ->
+    NewD = D#{VarName => lists:reverse(AccValue)},
+    case match(Template, String, NewD, Arg) of
         {error, _Reason} ->
-            bind(Key, [C | AccValue], Remain, StringRest, D, Arg);
+            bind(VarName, [C | AccValue], Template, StringRest, D, Arg);
 
         YetAnotherD ->
             YetAnotherD
@@ -124,15 +124,15 @@ bind(Key, AccValue, Remain, [C | StringRest] = String, D, Arg) ->
 
 
 %% reads out the variable name from a string where the string starts after the "$(" part of the variable
-read_key(String) ->
-    read_key(String, []).
+read_var_name(String) ->
+    read_var_name(String, []).
 
-read_key([], _Res) ->
+read_var_name([], _Res) ->
     {error, eof};
-read_key([$) | Remain], Res) ->
+read_var_name([$) | Remain], Res) ->
     {ok, lists:reverse(Res), Remain};
-read_key([C | Remain], Res) ->
-    read_key(Remain, [C | Res]).
+read_var_name([C | Remain], Res) ->
+    read_var_name(Remain, [C | Res]).
 
 
 
