@@ -67,8 +67,8 @@ replace([], Result, _Dict) ->
     lists:reverse(lists:flatten(Result));
 
 replace("$(" ++ Rest, Result, Dict) ->
-    {ok, VarName, RemainsAfterVariable} = read_var_name(Rest),
-    Value = maps:get(VarName, Dict),
+    {ok, VarName, Transform, RemainsAfterVariable} = read_var_name(Rest),
+    Value = eval(VarName, Transform, maps:get(VarName, Dict)),
     replace(RemainsAfterVariable, [lists:reverse(Value) | Result], Dict);
 
 replace([C | RestTemplate], Result, Dict) ->
@@ -81,13 +81,13 @@ match([], [], D, _) ->
     D;
 
 match("$(" ++ Rest, String, D, Arg) ->
-    {ok, VarName, RemainsAfterVariable} = read_var_name(Rest),
+    {ok, VarName, Transform, RemainsAfterVariable} = read_var_name(Rest),
     case maps:get(VarName, D, undefined) of
         undefined -> %% if we don't have an existing binding we try all possible bindings
-            bind(VarName, [], RemainsAfterVariable, String, D, Arg);
+            bind({VarName, Transform}, [], RemainsAfterVariable, String, D, Arg);
 
         CurrentValue -> %% if we have an existing binding we substitute the value of the variable and try to match
-            match(lists:flatten([CurrentValue | RemainsAfterVariable]), String, D, Arg)
+            match(lists:flatten([eval(VarName, Transform, CurrentValue) | RemainsAfterVariable]), String, D, Arg)
     end;
 
 match([C | TemplateRest], [C | StringRest], D, Arg) ->
@@ -98,41 +98,67 @@ match(_, _, _, Arg) ->
 
 
 
-bind(VarName, Value, [], [], D, _) ->
-    D#{VarName => lists:reverse(Value)};
+bind({VarName, T}, Value, [], [], D, _) ->
+    D#{VarName => eval(VarName, T, lists:reverse(Value))};
 
-bind(VarName, _, [], String, D, _) when length(String) > 0 ->
-    D#{VarName => String};
+bind({VarName, T}, _, [], String, D, _) when length(String) > 0 ->
+    D#{VarName => eval(VarName, T, String)};
 
-bind(VarName, Value, Template, [], D, Arg) when length(Template) > 0 ->
-    NewD = D#{VarName => lists:reverse(Value)},
+bind({VarName, T}, Value, Template, [], D, Arg) when length(Template) > 0 ->
+    NewD = D#{VarName => eval(VarName, T, lists:reverse(Value))},
     match(Template, [], NewD, Arg);
 
-bind(VarName, AccValue, String, String, D, _) ->
-    D#{VarName => lists:reverse(AccValue)};
+bind({VarName, T}, AccValue, String, String, D, _) ->
+    D#{VarName => eval(VarName, T, lists:reverse(AccValue))};
 
-bind(VarName, AccValue, Template, [C | StringRest] = String, D, Arg) ->
-    NewD = D#{VarName => lists:reverse(AccValue)},
+bind({VarName, T}, AccValue, Template, [C | StringRest] = String, D, Arg) ->
+    NewD = D#{VarName => eval(VarName, T, lists:reverse(AccValue))},
     case match(Template, String, NewD, Arg) of
         {error, _Reason} ->
-            bind(VarName, [C | AccValue], Template, StringRest, D, Arg);
+            bind({VarName, T}, [C | AccValue], Template, StringRest, D, Arg);
 
         YetAnotherD ->
             YetAnotherD
     end.
 
 
+eval(_, identity, Val) ->
+    Val;
+eval(VarName, Body, Val) ->
+    FunStr = "fun (" ++ VarName ++ ") -> " ++ Body ++ " end.",
+    {ok, Tokens, _} = erl_scan:string(FunStr),
+    {ok, [Form]} = erl_parse:parse_exprs(Tokens),
+    {value, Fun, _} = erl_eval:expr(Form, erl_eval:new_bindings()),
+    Fun(Val).
+
+
 
 %% reads out the variable name from a string where the string starts after the "$(" part of the variable
+%% a variable name could either be on the simple form $(NAME) or include a function body to be evaluated to substitute
+%% the value of the variable, such as $(NAME|lists:reverse(NAME))
 read_var_name(String) ->
     read_var_name(String, []).
 
 read_var_name([], _Res) ->
     {error, eof};
-read_var_name([$) | Remain], Res) ->
-    {ok, lists:reverse(Res), Remain};
+read_var_name("|" ++ Remain, Res) ->
+    read_fun_body(Res, Remain, [], 0);
+read_var_name(")" ++ Remain, Res) ->
+    {ok, lists:reverse(Res), identity, Remain};
 read_var_name([C | Remain], Res) ->
     read_var_name(Remain, [C | Res]).
+
+
+read_fun_body(_VarName, [], _Res, _PBalance) ->
+    {error, eof};
+read_fun_body(VarName, "(" ++ Remain, Res, PBalance) ->
+    read_fun_body(VarName, Remain, [$( | Res], PBalance + 1);
+read_fun_body(VarName, ")" ++ Remain, Res, PBalance) when PBalance > 0 ->
+    read_fun_body(VarName, Remain, [$) | Res], PBalance - 1);
+read_fun_body(VarName, ")" ++ Remain, Res, 0) ->
+    {ok, lists:reverse(VarName), lists:reverse(Res), Remain};
+read_fun_body(VarName, [C | Remain], Res, PBalance) ->
+    read_fun_body(VarName, Remain, [C | Res], PBalance).
 
 
 
@@ -241,5 +267,49 @@ match_with_variable_pattern_test() ->
     D = match("$(A)", "$(A)"),
     ?assertEqual(["A"], maps:keys(D)),
     ?assertEqual("$(A)", maps:get("A", D)).
+
+match_with_complex_variable_test() ->
+    D = match("$(A|lists:reverse(A))", "ab"),
+    ?assertEqual(["A"], maps:keys(D)),
+    ?assertEqual("ba", maps:get("A", D)).
+
+match_palindrom_test() ->
+    D = match("$(A)$(A|lists:reverse(A))", "olassalo"),
+    ?assertEqual(["A"], maps:keys(D)),
+    ?assertEqual("olas", maps:get("A", D)).
+
+match_non_palindrom_test() ->
+    ?assertEqual({error,{no_match,{"$(A)$(A|lists:reverse(A))","abcb"}}},
+                 match("$(A)$(A|lists:reverse(A))", "abcb")).
+
+match_reversed_vars_test() ->
+    D = match("$(A)a$(A|lists:reverse(A))", "12a21"),
+    ?assertEqual("12", maps:get("A", D)).
+
+match_reversed2_vars_test() ->
+    D = match("$(A|lists:reverse(A))a$(A)", "12a21"),
+    ?assertEqual("21", maps:get("A", D)).
+
+match_complex_vars_test() ->
+    ?assertEqual(#{"A" => "Stefan"},
+                 template:match("$(A)$(A|lists:reverse(string:to_upper(A)))", "StefanNAFETS")).
+
+
+%% read_var_name
+read_simple_var_test() ->
+    ?assertEqual({ok, "A", identity, ""}, read_var_name("A)")),
+    ?assertEqual({ok, "A", identity, "rest"}, read_var_name("A)rest")).
+
+read_complex_var_test() ->
+    ?assertEqual({ok, "A", "r(A)", ""}, read_var_name("A|r(A))")),
+    ?assertEqual({ok, "A", "r(A)", "rest"}, read_var_name("A|r(A))rest")).
+
+read_bad_complex_var_test() ->
+    ?assertEqual({error, eof}, read_var_name("A|r(A")).
+
+%% eval test
+eval_test() ->
+    ?assertEqual("a", eval("A", identity, "a")),
+    ?assertEqual("cba", eval("A", "lists:reverse(A)", "abc")).
 
 -endif.
